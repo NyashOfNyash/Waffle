@@ -1,0 +1,140 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="description" content="">
+    <meta name="keywords" content="">
+    <title>404: Not Found</title>
+    <script>
+        "use strict";
+
+const CONSTANTS = {
+    API_URL: "https://api.lanyard.rest/v1",
+    WEBSOCKET_URL: "wss://api.lanyard.rest/socket",
+    HEARTBEAT_PERIOD: 1000 * 30
+}
+
+async function lanyard(opts) {
+    if (!opts) throw new Error("Specify an options object");
+    if (!opts.userId) throw new Error("Specify a user ID");
+    
+    if (opts.socket) {
+        if (!opts.onPresenceUpdate) throw new Error("Specify onPresenceUpdate callback");
+
+        const supportsWebSocket = "WebSocket" in window || "MozWebSocket" in window;
+        if (!supportsWebSocket) throw new Error( "Browser doesn't support WebSocket connections.",);
+        
+        const socket = new WebSocket(CONSTANTS.WEBSOCKET_URL);
+        const subscription = typeof opts.userId == "string" ? "subscribe_to_id" : "subscribe_to_ids"
+        let heartbeat = null
+
+        socket.addEventListener("open", () => {
+            socket.send(
+                JSON.stringify({
+                    op: 2,
+                    d: {
+                        [subscription]: opts.userId,
+                    },
+                }),
+            );
+
+            heartbeat = setInterval(() => {
+                socket.send(
+                    JSON.stringify({
+                        op: 3,
+                    }),
+                );
+            }, CONSTANTS.HEARTBEAT_PERIOD);
+        });
+
+        socket.addEventListener("message", ({ data }) => {
+            const { t, d } = JSON.parse(data)
+
+            if (t === "INIT_STATE" || t === "PRESENCE_UPDATE") {
+                opts.onPresenceUpdate(d)
+            }
+        });
+
+        socket.onclose = (event) => {
+          try {
+            console.log("Socket closed")
+            clearInterval(heartbeat)
+            setTimeout(() => {
+                console.log("Trying to reconnect")
+                lanyard(opts)
+            }, 3000)
+          } catch(err) {
+            console.log("Socket closed") 
+          }
+          console.log(event)
+        };
+        return socket;
+    } else {
+        if (typeof opts.userId == "string") {
+            const res = await fetch(`${CONSTANTS.API_URL}/users/${opts.userId}`);
+            const body = await res.json();
+
+            if (!body.success) throw new Error(body.error?.message || "An invalid error occured");
+
+            return body.data;
+        } else {
+            const val = [];
+
+            for (const userId of opts.userId) {
+                const res = await fetch(`${CONSTANTS.API_URL}/users/${userId}`);
+                const body = await res.json();
+
+                if (!body.success) throw new Error(body.error?.message || "An invalid error occured");
+
+                val.push(body.data)
+            }
+
+            return val;
+        }
+    }
+}
+
+    </script>
+        <style>
+        body {font-family:'Lucida Grande','Lucida Sans Unicode',Verdana,Arial,sans-serif; font-size:13px; color:#333; border-top:4px solid #e1e1e1; padding:0; margin:0; }
+        h1 {white-space: nowrap; font-family:Georgia,'Times New Roman',Times,serif; font-style:italic; font-size:18px; }
+        #xn_primary { width:400px; border-left:1px solid #ccc; padding:5px 0 5px 20px; margin:50px 0 0 60px; }
+        a { color:#75AF2D; }
+        </style>
+</head>
+
+<body>
+        <div id="xn">
+                <div id="xn_body" class="common">
+                        <div id="xn_primary">
+                                <h1>never.gay</h1>
+                       </div>
+<div id="xn_body" class="common">
+                        <div id="xn_primary">
+                                <h1 id='listen'></h1>
+                                <br> 
+                                <h1 id="status"></h1> 
+      </div>
+                </div>  
+                </div>  
+        </div>
+
+        <script>
+lanyard({
+    userId: "382952380968468482",
+}).then(data => {
+  if (data.listening_to_spotify == true) {
+    document.getElementById('listen').innerText = `i am listening to ${data.spotify.song} - ${data.spotify.artist}`;
+  } else {
+    document.getElementById('listen').innerText = 'i am not listening to anything';
+  }
+  if (data.discord_status == "dnd") {
+    document.getElementById('status').innerText = `i am currently on discord`;
+  } else {
+    document.getElementById('status').innerText = 'i am offline';
+  }
+});
+
+
+        </script>
+</body>
+</html>
